@@ -1,0 +1,383 @@
+/* pdfstitch web app.
+   Bookbinding palette: cool desk, white sheets, navy binder board, red linen thread.
+   System fonts only, so the page makes no third-party requests at all. */
+
+:root {
+  --desk: #dce2e8;
+  --desk-deep: #c9d1da;
+  --sheet: #ffffff;
+  --board: #22304a;
+  --board-ink: #eef1f5;
+  --board-soft: #a9b4c6;
+  --ink: #1d2433;
+  --muted: #5a6478;
+  --thread: #b0263b;
+  --thread-soft: #f6dfe3;
+  --focus: #2f6fd6;
+  --ok: #1f7a4d;
+
+  --serif: "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", "P052", Georgia, serif;
+  --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #171c26;
+    --desk-deep: #232a38;
+    --sheet: #252d3c;
+    --board: #0f1522;
+    --board-ink: #e6eaf1;
+    --board-soft: #8f9bb0;
+    --ink: #e6eaf1;
+    --muted: #a3adbf;
+    --thread: #e0566b;
+    --thread-soft: #3b2230;
+    --focus: #7aa7ff;
+    --ok: #5cc493;
+    color-scheme: dark;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--desk);
+  color: var(--ink);
+  font: 16px/1.5 var(--sans);
+  min-height: 100vh;
+}
+
+button, input { font: inherit; color: inherit; }
+
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+code { font-family: var(--mono); font-size: 0.92em; }
+
+/* ---------------------------------------------------------------- masthead */
+
+.masthead {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 56px 24px 32px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 40px;
+}
+
+.masthead h1 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+  margin: 0 0 14px;
+}
+
+.lede {
+  margin: 0;
+  max-width: 34em;
+  color: var(--muted);
+  font-size: 1.06rem;
+}
+
+.repo {
+  color: var(--ink);
+  font-size: 0.92rem;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--thread);
+  text-decoration-thickness: 2px;
+}
+
+/* --------------------------------------------------------------- workspace */
+
+.workspace {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px 48px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 32px;
+  align-items: start;
+}
+
+.stack-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  min-height: 2.2rem;
+}
+
+h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.45rem;
+  margin: 0;
+}
+
+.count { color: var(--muted); font-family: var(--sans); font-size: 0.95rem; }
+
+.stack-tools { display: flex; gap: 6px; }
+
+.ghost {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 10px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.ghost:hover { color: var(--ink); border-color: var(--desk-deep); }
+
+/* ------------------------------------------------------------------ sheets */
+
+/* The thread: one red line that runs down the left edge of the stack and
+   passes through a stitch hole in every sheet, so the merged order reads
+   as a single bound document. */
+.sheets {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 30px;
+  position: relative;
+}
+.sheets:not(:empty)::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 34px;
+  bottom: 34px;
+  border-left: 2px dashed var(--thread);
+}
+
+.sheet {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  background: var(--sheet);
+  border-radius: 3px;
+  padding: 12px 12px 12px 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 0 var(--desk-deep), 0 6px 14px -10px rgba(29, 36, 51, 0.45);
+  cursor: grab;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.sheet.dragging { opacity: 0.45; cursor: grabbing; }
+.sheet.drop-before { box-shadow: 0 -4px 0 var(--thread), 0 6px 14px -10px rgba(29, 36, 51, 0.45); }
+.sheet.drop-after { box-shadow: 0 4px 0 var(--thread), 0 6px 14px -10px rgba(29, 36, 51, 0.45); }
+.sheet.just-added { animation: settle 360ms cubic-bezier(.2, .8, .3, 1.2); }
+
+@keyframes settle {
+  from { transform: translateY(-10px) rotate(-0.6deg); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.stitch {
+  position: absolute;
+  left: -25px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--desk);
+  border: 2px solid var(--thread);
+}
+
+.thumb {
+  width: 64px;
+  height: 82px;
+  display: grid;
+  place-items: center;
+  background: var(--desk);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.thumb canvas { max-width: 100%; max-height: 100%; box-shadow: 0 0 0 1px var(--desk-deep); background: #fff; }
+
+.sheet-body { min-width: 0; }
+
+.name {
+  margin: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta { margin: 0 0 8px; color: var(--muted); font-size: 0.9rem; }
+.meta.error { color: var(--thread); }
+
+.pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.pages input {
+  width: 11rem;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--desk-deep);
+  border-radius: 4px;
+  background: var(--sheet);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+.pages input[aria-invalid="true"] { border-color: var(--thread); background: var(--thread-soft); }
+
+.sheet-actions { display: flex; flex-direction: column; gap: 2px; }
+.sheet.broken .pages { display: none; }
+
+.icon {
+  width: 32px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon:hover { background: var(--desk); color: var(--ink); }
+.icon:disabled { opacity: 0.25; cursor: default; background: none; }
+.icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.icon.remove:hover { color: var(--thread); }
+
+/* ---------------------------------------------------------------- dropzone */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  min-height: 120px;
+  margin-left: 30px;
+  padding: 20px;
+  border: 2px dashed var(--desk-deep);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.dropzone input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.dropzone:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.dropzone:hover, body.file-over .dropzone { border-color: var(--thread); background: var(--thread-soft); color: var(--ink); }
+.dz-main { font-family: var(--serif); font-size: 1.3rem; color: var(--ink); }
+.dz-link { text-decoration: underline; text-underline-offset: 3px; }
+
+.stack.empty .dropzone { min-height: 300px; margin-left: 0; background: var(--sheet); border-color: var(--desk-deep); }
+.stack.empty .dz-main { font-size: 1.7rem; }
+
+/* ------------------------------------------------------------------ binder */
+
+.binder {
+  position: sticky;
+  top: 24px;
+  background: var(--board);
+  color: var(--board-ink);
+  border-radius: 8px;
+  padding: 24px;
+}
+.binder h2 { margin-bottom: 4px; }
+
+.total { margin: 0 0 20px; color: var(--board-soft); }
+.total strong { color: var(--board-ink); font-weight: 600; }
+
+.field { display: block; margin-bottom: 18px; }
+.field span { display: block; font-size: 0.9rem; color: var(--board-soft); margin-bottom: 6px; }
+.field input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--board-ink);
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+  cursor: pointer;
+  font-size: 0.96rem;
+}
+.check input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--thread); }
+.check small { display: block; color: var(--board-soft); font-size: 0.84rem; line-height: 1.4; margin-top: 2px; }
+
+.merge {
+  width: 100%;
+  margin-top: 8px;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--thread);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1.02rem;
+  cursor: pointer;
+}
+.merge:hover:not(:disabled) { filter: brightness(1.08); }
+.merge:disabled { background: rgba(255, 255, 255, 0.12); color: var(--board-soft); cursor: not-allowed; }
+.merge:focus-visible { outline-color: #fff; }
+
+.status { min-height: 1.5em; margin: 12px 0 0; font-size: 0.92rem; color: var(--board-soft); }
+.status.ok { color: #8fe0b5; }
+.status.error { color: #ff9aa9; }
+
+.syntax { margin-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 14px; font-size: 0.9rem; }
+.syntax summary { cursor: pointer; color: var(--board-ink); }
+.syntax dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 12px 0 8px; }
+.syntax dt { white-space: nowrap; }
+.syntax dd { margin: 0; color: var(--board-soft); }
+.syntax code { color: #ffd2d9; }
+.syntax p { margin: 0; color: var(--board-soft); }
+
+/* ------------------------------------------------------------------ footer */
+
+.foot {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px 48px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.foot p { max-width: 70ch; margin: 0; }
+.foot code { overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------------ mobile */
+
+@media (max-width: 820px) {
+  .masthead { padding: 32px 16px 20px; }
+  .workspace { grid-template-columns: 1fr; padding: 0 16px 32px; gap: 24px; }
+  .binder { position: static; }
+  .foot { padding: 0 16px 32px; }
+  .sheet { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; }
+  .thumb { width: 48px; height: 62px; }
+  .pages input { width: 8rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
