@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdfstitch"
+dynamic = ["version"]
+description = "Combine PDF files, or pick pages out of them, into one PDF. CLI for Windows/macOS/Linux plus a private in-browser app."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "aadijewargi" }]
+requires-python = ">=3.9"
+dependencies = ["pypdf>=4.0"]
+keywords = ["pdf", "merge", "combine", "cli", "windows"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Environment :: Console",
+  "Topic :: Office/Business",
+]
+
+[project.optional-dependencies]
+crypto = ["cryptography"]
+test = ["pytest>=7"]
+
+[project.scripts]
+pdfstitch = "pdfstitch.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/aadijewargi/pdfstitch"
+"Web app" = "https://aadijewargi.github.io/pdfstitch/"
+
+[tool.setuptools.dynamic]
+version = { attr = "pdfstitch.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
