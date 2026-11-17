@@ -16,8 +16,8 @@ Item           Meaning
 =============  ==============================================
 
 An empty spec selects every page. Items are kept in the order written and
-repeats are allowed, so ``1,1,2`` duplicates page 1. Whitespace and letter
-case are ignored.
+repeats are allowed, so ``1,1,2`` duplicates page 1. Letter case and spaces
+around commas and dashes are ignored; a space inside a number is an error.
 
 Parsing happens in two steps so that a spec can be checked for syntax before
 the document is opened: :func:`parse` turns text into a tuple of items, and
@@ -78,7 +78,9 @@ def parse(spec: Optional[str]) -> Tuple[_Item, ...]:
         return (_Range(1, END),)
     items: List[_Item] = []
     for raw in spec.split(","):
-        item = re.sub(r"\s+", "", raw).lower()
+        # Allow spaces around the dash but not inside a number: "1 2" is an
+        # error, not page 12.
+        item = re.sub(r"\s*-\s*", "-", raw.strip()).lower()
         if not item:
             raise PageSpecError(f"empty item in page spec {spec!r}")
         if item in ("odd", "even"):
