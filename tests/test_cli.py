@@ -69,6 +69,26 @@ def test_expand_folder_and_glob_in_natural_order(pdf, tmp_path, monkeypatch):
     assert [(s.path.name, s.pages) for s in by_glob] == [("p1.pdf", "1"), ("p2.pdf", "1"), ("p10.pdf", "1")]
 
 
+def test_expand_skips_earlier_output(pdf, tmp_path, monkeypatch):
+    for name in ["a.pdf", "merged.pdf", "Merged (2).pdf", "merged-notes.pdf"]:
+        pdf(name, [100])
+    monkeypatch.chdir(tmp_path)
+    skipped = []
+    names = [s.path.name for s in expand(["."], skipped=skipped)]
+    assert names == ["a.pdf", "merged-notes.pdf"]
+    assert sorted(p.name for p in skipped) == ["Merged (2).pdf", "merged.pdf"]
+    assert [s.path.name for s in expand(["merged.pdf"])] == ["merged.pdf"]  # explicit wins
+    with pytest.raises(MergeError, match="only earlier"):
+        expand(["merged.p*"])
+
+
+def test_cli_singular_page(pdf, tmp_path, capsys):
+    a = pdf("a.pdf", [101])
+    assert main([str(a), "-n"]) == 0
+    out = capsys.readouterr().out
+    assert "1 page\n" in out and "= 1 page" in out
+
+
 def test_expand_errors(tmp_path):
     with pytest.raises(MergeError, match="no files match"):
         expand([str(tmp_path / "*.pdf")])
@@ -106,7 +126,7 @@ def test_cli_merge(pdf, tmp_path, capsys):
     assert main([str(a), f"{b}:3,1", "-o", str(out), "--title", "T"]) == 0
     assert widths(out) == [101, 102, 203, 201]
     text = capsys.readouterr().out
-    assert "all 2 pages" in text and "2 of 3 pages" in text and "= 4 pages" in text
+    assert "2 pages\n" in text and "2 of 3 pages" in text and "= 4 pages" in text
 
 
 def test_cli_default_output_next_to_first_input(pdf, tmp_path):

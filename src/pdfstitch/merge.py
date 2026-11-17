@@ -98,17 +98,20 @@ def _copy_outline(
     writer: PdfWriter,
     parent: Any,
     page_map: Dict[int, int],
-) -> None:
+) -> bool:
     """Copy a source outline, re-pointing entries at the merged document.
 
     pypdf represents an outline as a flat list where a nested list holds the
     children of the item just before it. Entries whose target page was not
     selected are dropped; their children (if any survive) move up a level.
+    Returns True if anything was copied.
     """
+    copied = False
     previous = None
     for node in nodes:
         if isinstance(node, list):
-            _copy_outline(reader, node, writer, previous if previous is not None else parent, page_map)
+            target = previous if previous is not None else parent
+            copied = _copy_outline(reader, node, writer, target, page_map) or copied
             continue
         src = _page_index(reader, node)
         if src is None or src not in page_map:
@@ -116,6 +119,8 @@ def _copy_outline(
             continue
         title = str(node.get("/Title", "")) or "(untitled)"
         previous = writer.add_outline_item(title, page_map[src], parent=parent)
+        copied = True
+    return copied
 
 
 def _unique_temp(dirpath: Path) -> Path:
@@ -162,6 +167,7 @@ def merge(
     planned = plan(sources)
 
     writer = PdfWriter()
+    has_outline = False
     for i, item in enumerate(planned):
         start = len(writer.pages)
         writer.append(item.reader, pages=item.indices, import_outline=False)
@@ -171,10 +177,12 @@ def merge(
             page_map.setdefault(src, start + offset)
 
         parent = None
-        if bookmarks:
+        if bookmarks and item.indices:
             parent = writer.add_outline_item(item.source.label, start)
-        if keep_outlines:
-            _copy_outline(item.reader, item.reader.outline, writer, parent, page_map)
+            has_outline = True
+        if keep_outlines and item.reader.outline:
+            before = has_outline
+            has_outline = _copy_outline(item.reader, item.reader.outline, writer, parent, page_map) or before
 
         is_last = i == len(planned) - 1
         if duplex and not is_last and (len(writer.pages) - start) % 2 == 1:
@@ -184,7 +192,7 @@ def merge(
     if title:
         writer.add_metadata({"/Title": title})
     writer.add_metadata({"/Producer": "pdfstitch (pypdf)"})
-    if len(writer.outline) > 0:
+    if has_outline:
         writer.page_mode = "/UseOutlines"  # open with the bookmarks panel showing
 
     # Write to a temporary file in the same folder, then swap it into place,

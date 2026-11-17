@@ -25,6 +25,8 @@ from .ranges import is_spec
 __all__ = ["split_spec", "expand", "sort_sources", "default_output"]
 
 _GLOB_CHARS = re.compile(r"[*?\[]")
+# Names pdfstitch picks for its own output when -o isn't given.
+_OWN_OUTPUT = re.compile(r"^merged(?: \(\d+\))?\.pdf$", re.IGNORECASE)
 _DRIVE = re.compile(r"^[A-Za-z]$")
 
 
@@ -47,12 +49,21 @@ def _pdfs_in(folder: Path) -> List[Path]:
     return sorted(found, key=natural_key)
 
 
-def expand(args: Sequence[str], password: Optional[str] = None) -> List[Source]:
+def expand(
+    args: Sequence[str],
+    password: Optional[str] = None,
+    skipped: Optional[List[Path]] = None,
+) -> List[Source]:
     """Expand files, folders and wildcards into sources, keeping argument order.
 
     Within one folder or one wildcard, files come out in natural order. A
     page spec written after a folder or wildcard applies to every file it
     expands to (``scans\\*.pdf:1`` takes page 1 of each scan).
+
+    Folders and wildcards leave out ``merged.pdf`` / ``merged (2).pdf``, the
+    names pdfstitch gives its own output, so running the same command twice
+    doesn't fold the first result into the second. Those files are appended
+    to ``skipped`` if given; naming one explicitly still includes it.
     """
     sources: List[Source] = []
     for arg in args:
@@ -69,8 +80,14 @@ def expand(args: Sequence[str], password: Optional[str] = None) -> List[Source]:
             if not matches:
                 raise MergeError(f"{target}: no files match")
         else:
-            matches = [path]
-        sources.extend(Source(m, spec, password) for m in matches)
+            sources.append(Source(path, spec, password))
+            continue
+        kept = [m for m in matches if not _OWN_OUTPUT.match(m.name)]
+        if skipped is not None:
+            skipped.extend(m for m in matches if _OWN_OUTPUT.match(m.name))
+        if not kept:
+            raise MergeError(f"{target}: only earlier pdfstitch output (merged*.pdf) found")
+        sources.extend(Source(m, spec, password) for m in kept)
     return sources
 
 

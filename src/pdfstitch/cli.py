@@ -61,18 +61,31 @@ def _parser() -> argparse.ArgumentParser:
     return p
 
 
+def _show(path: Path) -> str:
+    """A path as short as possible: relative to the current folder when inside it."""
+    try:
+        rel = os.path.relpath(path)
+    except ValueError:  # different drive on Windows
+        return str(path)
+    return str(path) if rel.startswith("..") else rel
+
+
+def _pages(n: int) -> str:
+    return f"{n} page" if n == 1 else f"{n} pages"
+
+
 def _summary(planned: Sequence[PlannedFile], duplex: bool) -> str:
-    width = max(len(str(p.source.path)) for p in planned)
+    width = max(len(_show(p.source.path)) for p in planned)
     lines = []
     total = 0
     for i, item in enumerate(planned):
         taken = len(item.indices)
         pad = duplex and i < len(planned) - 1 and (total + taken) % 2 == 1
         total += taken + (1 if pad else 0)
-        what = f"all {item.page_count}" if item.source.pages is None else f"{taken} of {item.page_count}"
+        what = _pages(item.page_count) if item.source.pages is None else f"{taken} of {_pages(item.page_count)}"
         extra = "  + blank" if pad else ""
-        lines.append(f"  {str(item.source.path):<{width}}  {what} pages{extra}")
-    lines.append(f"  {'':<{width}}  = {total} pages")
+        lines.append(f"  {_show(item.source.path):<{width}}  {what}{extra}")
+    lines.append(f"  {'':<{width}}  = {_pages(total)}")
     return "\n".join(lines)
 
 
@@ -102,12 +115,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("pdfstitch: error: give at least one PDF file", file=sys.stderr)
             return 2
 
-        sources = sort_sources(expand(args.inputs, args.password), args.sort)
+        skipped: List[Path] = []
+        sources = sort_sources(expand(args.inputs, args.password, skipped), args.sort)
+        for path in skipped:
+            say(f"Skipping {_show(path)} (output of an earlier run; name it explicitly to include it)")
 
         if args.dry_run:
             planned = plan(sources)
             out = args.output or default_output(sources)
-            say(f"Would write {out}:\n{_summary(planned, args.duplex)}")
+            say(f"Would write {_show(out)}:\n{_summary(planned, args.duplex)}")
             return 0
 
         out = args.output or default_output(sources)
@@ -120,7 +136,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             title=args.title,
             overwrite=args.force,
         )
-        say(f"Wrote {out}\n{_summary(planned, args.duplex)}")
+        say(f"Wrote {_show(out)}\n{_summary(planned, args.duplex)}")
         if args.open:
             _open_file(Path(out))
         return 0
